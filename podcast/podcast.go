@@ -264,13 +264,19 @@ func (p *Podcaster) Sync() error {
 			return nil
 		}
 
+		// targetDir からの相対パスを取得（サブディレクトリを含む）
+		relPath, err := filepath.Rel(p.targetDir, fpath)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
 		baseName := filepath.Base(fpath)
 
 		u, err := url.Parse(p.baseURL)
 		if err != nil {
 			return fmt.Errorf("failed to parse baseURL(%s): %w", p.baseURL, err)
 		}
-		u.Path = path.Join(u.Path, "static", baseName)
+		// path.Join を使ってパスを結合（forward slash を使用）
+		u.Path = path.Join(u.Path, "static", filepath.ToSlash(relPath))
 
 		stat, err := os.Stat(fpath)
 		if err != nil {
@@ -393,6 +399,27 @@ func (p *Podcaster) Sync() error {
 	}
 	p.logger.Trace().Str("all_feed", feed).Msg("all episodes feed is generated")
 	feedMap["all"] = feed
+
+	// adhoc パスの空のフィードを初期化（録音ファイルがなくてもRSSフィードが存在するように）
+	if _, exists := feedMap["adhoc"]; !exists {
+		adhocEpisodes := pathGroupedEpisodes["adhoc"]
+		if adhocEpisodes == nil {
+			adhocEpisodes = []Episode{}
+		}
+		adhocFeed, err := encodePodcastToXML(
+			&Podcast{
+				Title:       "Radicaster - アドホック録音",
+				Link:        p.link,
+				Description: "番組表から手動で録音した番組",
+				PublishedAt: p.publishedAt,
+				ImageURL:    p.imageURL,
+				Episodes:    adhocEpisodes,
+			},
+		)
+		if err == nil {
+			feedMap["adhoc"] = adhocFeed
+		}
+	}
 
 	p.mu.Lock()
 	p.feedMap = feedMap
