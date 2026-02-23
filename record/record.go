@@ -344,21 +344,53 @@ func (r *Recorder) recordByStartTime(
 		return nil
 	}
 
-	uri, err := client.TimeshiftPlaylistM3U8(ctx, stationID, from)
+	to, err := time.ParseInLocation(
+		"20060102150405",
+		program.To,
+		timeutil.JST(),
+	)
 	if err != nil {
 		return errors.Wrap(
 			err,
 			fmt.Sprintf(
-				"failed to get m3u8: %s %s %s",
+				"failed to convert program.To: %s %s %s",
 				stationID,
 				podcastTitle,
 				from.Format(time.DateOnly),
 			))
 	}
 
-	chunkURLs, err := radiko.GetChunklistFromM3U8(uri)
-	if err != nil {
-		return errors.Wrap(err, "failed to get chunklist")
+
+	var fullChunklist []string
+	curr := from
+	for curr.Before(to) {
+		uri, err := client.TimeshiftPlaylistM3U8(ctx, stationID, curr, program.Ft, program.To)
+		if err != nil {
+			return errors.Wrap(
+				err,
+				fmt.Sprintf(
+					"failed to get m3u8: %s %s %s",
+					stationID,
+					podcastTitle,
+					from.Format(time.DateOnly),
+				))
+		}
+
+		chunklist, err := client.GetChunklistFromURI(ctx, uri)
+		if err != nil {
+			return errors.Wrap(
+				err,
+				fmt.Sprintf(
+					"failed to get chunk: %s %s %s",
+					stationID,
+					podcastTitle,
+					from.Format(time.DateOnly),
+				))
+		}
+
+		fullChunklist = append(fullChunklist, chunklist...)
+		curr = curr.Add(5 * time.Minute)
+		time.Sleep(200 * time.Millisecond) // Be nice to the server
 	}
 
 	aacDir, err := os.MkdirTemp(os.TempDir(), "radicaster")
@@ -368,7 +400,7 @@ func (r *Recorder) recordByStartTime(
 	defer os.RemoveAll(aacDir)
 	logger.Debug().Str("aac_temp_dir", aacDir).Msg("created temp dir")
 
-	if err := r.bulkDownload(chunkURLs, aacDir); err != nil {
+	if err := r.bulkDownload(fullChunklist, aacDir); err != nil {
 		return errors.Wrap(err, "failed to download aac files")
 	}
 
@@ -702,7 +734,7 @@ func (r *Recorder) executeAdHocRecording(ctx context.Context, task *AdHocTask) {
 	}
 
 	// M3U8プレイリスト取得
-	uri, err := client.TimeshiftPlaylistM3U8(ctx, task.StationID, task.From)
+	uri, err := client.TimeshiftPlaylistM3U8(ctx, task.StationID, task.From, program.Ft, program.To)
 	if err != nil {
 		r.adHocManager.Update(task.ID, func(t *AdHocTask) {
 			t.Status = TaskFailed

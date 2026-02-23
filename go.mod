@@ -72,3 +72,8 @@ require (
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 )
+
+replace (
+	github.com/yyoshiki41/go-radiko => github.com/e-jigsaw/go-radiko v0.0.0-20260201050816-ed8dbfc56c24
+	github.com/yyoshiki41/radigo => github.com/e-jigsaw/radigo v0.0.0-20260201053304-8829b0bc54c7
+)
